@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>micrograd training visualizer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --border: #d9dde5;
+      --ink: #20242c;
+      --muted: #697386;
+      --panel: #f7f8fb;
+      --accent: #155eef;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(360px, 1.45fr) minmax(320px, 0.9fr);
+      gap: 16px;
+      padding: 16px;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button, input[type="range"] {
+      accent-color: var(--accent);
+    }
+    button {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 11px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      font-weight: 650;
+      font-size: 14px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      background: #fff;
+    }
+    #surface {
+      aspect-ratio: 1.35 / 1;
+    }
+    #curves {
+      aspect-ratio: 1.8 / 1;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+    .side {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .swatch {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      margin-right: 4px;
+      border: 1px solid rgba(0,0,0,0.35);
+      vertical-align: -1px;
+    }
+    .blue { background: #1647d9; }
+    .red { background: #e02020; }
+    .linekey {
+      display: inline-block;
+      width: 18px;
+      border-top: 2px solid #111;
+      vertical-align: 3px;
+      margin-right: 4px;
+    }
+    @media (max-width: 900px) {
+      header { align-items: flex-start; flex-direction: column; }
+      main { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(4, minmax(90px, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>micrograd training visualizer</h1>
+    <div class="toolbar">
+      <button id="play">Play</button>
+      <label class="toggle">Step <input id="step" type="range" min="0" value="0"></label>
+      <label class="toggle"><input id="showPoints" type="checkbox" checked> Points</label>
+      <label class="toggle"><input id="showBoundary" type="checkbox" checked> Boundary</label>
+      <label class="toggle"><input id="showRelu" type="checkbox" checked> ReLU lines</label>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <div class="panel-title">
+        <span>Decision surface</span>
+        <span class="legend">
+          <span><i class="swatch blue"></i>-1</span>
+          <span><i class="swatch red"></i>+1</span>
+          <span><i class="linekey"></i>score 0</span>
+        </span>
+      </div>
+      <canvas id="surface" width="980" height="720"></canvas>
+    </section>
+    <aside class="side">
+      <div class="metrics">
+        <div class="metric"><span>step</span><strong id="metricStep">0</strong></div>
+        <div class="metric"><span>loss</span><strong id="metricLoss">0</strong></div>
+        <div class="metric"><span>accuracy</span><strong id="metricAcc">0%</strong></div>
+        <div class="metric"><span>dead ReLUs</span><strong id="metricDead">0</strong></div>
+      </div>
+      <section class="panel">
+        <div class="panel-title"><span>Loss and accuracy</span></div>
+        <canvas id="curves" width="900" height="500"></canvas>
+      </section>
+    </aside>
+  </main>
+  <script>
+    let data = null;
+    let snapshotSteps = [];
+    const state = { index: 0, timer: null };
+
+    const surface = document.getElementById("surface");
+    const curves = document.getElementById("curves");
+    const stepInput = document.getElementById("step");
+    const playButton = document.getElementById("play");
+    const showPoints = document.getElementById("showPoints");
+    const showBoundary = document.getElementById("showBoundary");
+    const showRelu = document.getElementById("showRelu");
+
+    function metricAtStep(step) {
+      return data.metrics.find((row) => row.step === step);
+    }
+
+    function resizeCanvas(canvas) {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+      canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      return { ctx, width: rect.width, height: rect.height };
+    }
+
+    function colorForScore(score) {
+      const t = Math.tanh(score * 0.9);
+      if (t >= 0) {
+        const r = 248;
+        const g = Math.round(245 - 95 * t);
+        const b = Math.round(242 - 120 * t);
+        return `rgb(${r},${g},${b})`;
+      }
+      const a = -t;
+      const r = Math.round(238 - 105 * a);
+      const g = Math.round(244 - 76 * a);
+      const b = 252;
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function drawSurface() {
+      const snapshot = data.snapshots[state.index];
+      const metric = metricAtStep(snapshot.step);
+      const { ctx, width, height } = resizeCanvas(surface);
+      const grid = snapshot.grid;
+      const plot = { left: 34, top: 18, right: width - 18, bottom: height - 28 };
+      const plotW = plot.right - plot.left;
+      const plotH = plot.bottom - plot.top;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+
+      const cellW = plotW / grid.cols;
+      const cellH = plotH / grid.rows;
+      for (let row = 0; row < grid.rows; row++) {
+        for (let col = 0; col < grid.cols; col++) {
+          const score = grid.scores[row * grid.cols + col];
+          ctx.fillStyle = colorForScore(score);
+          const x = plot.left + col * cellW;
+          const y = plot.bottom - (row + 1) * cellH;
+          ctx.fillRect(x, y, Math.ceil(cellW) + 0.5, Math.ceil(cellH) + 0.5);
+        }
+      }
+
+      function toX(x) {
+        return plot.left + ((x - grid.xMin) / (grid.xMax - grid.xMin)) * plotW;
+      }
+      function toY(y) {
+        return plot.bottom - ((y - grid.yMin) / (grid.yMax - grid.yMin)) * plotH;
+      }
+
+      if (showBoundary.checked) {
+        ctx.fillStyle = "#111111";
+        for (let row = 0; row < grid.rows - 1; row++) {
+          for (let col = 0; col < grid.cols - 1; col++) {
+            const i = row * grid.cols + col;
+            const vals = [
+              grid.scores[i],
+              grid.scores[i + 1],
+              grid.scores[i + grid.cols],
+              grid.scores[i + grid.cols + 1],
+            ];
+            if (Math.min(...vals) <= 0 && Math.max(...vals) >= 0) {
+              const x = plot.left + (col + 0.5) * cellW;
+              const y = plot.bottom - (row + 0.5) * cellH;
+              ctx.fillRect(x - 1.1, y - 1.1, 2.2, 2.2);
+            }
+          }
+        }
+      }
+
+      if (showRelu.checked) {
+        const colors = [
+          "#2563eb", "#ea580c", "#16a34a", "#dc2626", "#7c3aed", "#0891b2",
+          "#be185d", "#65a30d", "#ca8a04", "#475569", "#0284c7", "#c026d3",
+          "#059669", "#f43f5e", "#9333ea", "#0f766e"
+        ];
+        snapshot.firstLayer.lines.forEach(([w1, w2, b], i) => {
+          const dead = snapshot.firstLayer.deadMask[i];
+          ctx.strokeStyle = dead ? "rgba(90,90,90,0.45)" : colors[i % colors.length];
+          ctx.lineWidth = dead ? 1.2 : 1.6;
+          ctx.setLineDash(dead ? [6, 5] : []);
+          ctx.beginPath();
+          if (Math.abs(w2) > 1e-12) {
+            const y1 = -(w1 * grid.xMin + b) / w2;
+            const y2 = -(w1 * grid.xMax + b) / w2;
+            ctx.moveTo(toX(grid.xMin), toY(y1));
+            ctx.lineTo(toX(grid.xMax), toY(y2));
+          } else if (Math.abs(w1) > 1e-12) {
+            const x = -b / w1;
+            ctx.moveTo(toX(x), plot.top);
+            ctx.lineTo(toX(x), plot.bottom);
+          }
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+      }
+
+      if (showPoints.checked) {
+        data.points.forEach((point, i) => {
+          ctx.beginPath();
+          ctx.arc(toX(point[0]), toY(point[1]), 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = data.labels[i] > 0 ? "#e02020" : "#1647d9";
+          ctx.fill();
+          ctx.strokeStyle = "#111111";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+      }
+
+      ctx.strokeStyle = "#1f2937";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(plot.left, plot.top, plotW, plotH);
+
+      const deadTotal = (metric.layer_1_dead_relu_count || 0) + (metric.layer_2_dead_relu_count || 0);
+      document.getElementById("metricStep").textContent = String(snapshot.step);
+      document.getElementById("metricLoss").textContent = snapshot.loss.toFixed(4);
+      document.getElementById("metricAcc").textContent = `${Math.round(snapshot.accuracy * 100)}%`;
+      document.getElementById("metricDead").textContent = String(deadTotal);
+    }
+
+    function drawCurves() {
+      const snapshot = data.snapshots[state.index];
+      const { ctx, width, height } = resizeCanvas(curves);
+      const plot = { left: 48, top: 18, right: width - 38, bottom: height - 38 };
+      const plotW = plot.right - plot.left;
+      const plotH = plot.bottom - plot.top;
+      const steps = data.metrics.map((row) => row.step);
+      const losses = data.metrics.map((row) => row.loss);
+      const accs = data.metrics.map((row) => row.accuracy);
+      const maxStep = Math.max(...steps);
+      const maxLoss = Math.max(...losses);
+
+      function xFor(step) {
+        return plot.left + (step / maxStep) * plotW;
+      }
+      function yLoss(value) {
+        return plot.bottom - (value / maxLoss) * plotH;
+      }
+      function yAcc(value) {
+        return plot.bottom - value * plotH;
+      }
+      function drawLine(values, yFor, color) {
+        ctx.beginPath();
+        values.forEach((value, i) => {
+          const x = xFor(steps[i]);
+          const y = yFor(value);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = plot.top + (i / 4) * plotH;
+        ctx.beginPath();
+        ctx.moveTo(plot.left, y);
+        ctx.lineTo(plot.right, y);
+        ctx.stroke();
+      }
+      drawLine(losses, yLoss, "#1f77b4");
+      drawLine(accs, yAcc, "#d62728");
+
+      const currentX = xFor(snapshot.step);
+      ctx.strokeStyle = "#111827";
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(currentX, plot.top);
+      ctx.lineTo(currentX, plot.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#1f77b4";
+      ctx.fillText("loss", plot.left, plot.top + 12);
+      ctx.fillStyle = "#d62728";
+      ctx.fillText("accuracy", plot.left + 44, plot.top + 12);
+      ctx.strokeStyle = "#1f2937";
+      ctx.strokeRect(plot.left, plot.top, plotW, plotH);
+    }
+
+    function render() {
+      stepInput.value = String(state.index);
+      drawSurface();
+      drawCurves();
+    }
+
+    function stopPlayback() {
+      if (state.timer) clearInterval(state.timer);
+      state.timer = null;
+      playButton.textContent = "Play";
+    }
+
+    async function loadData() {
+      const response = await fetch("milestone4_data.json");
+      if (!response.ok) {
+        throw new Error(`Could not load ${response.url}: ${response.status}`);
+      }
+      data = await response.json();
+      snapshotSteps = data.snapshots.map((snapshot) => snapshot.step);
+      stepInput.max = String(data.snapshots.length - 1);
+      render();
+    }
+
+    stepInput.addEventListener("input", () => {
+      state.index = Number(stepInput.value);
+      stopPlayback();
+      render();
+    });
+    [showPoints, showBoundary, showRelu].forEach((input) => {
+      input.addEventListener("change", render);
+    });
+    playButton.addEventListener("click", () => {
+      if (state.timer) {
+        stopPlayback();
+        return;
+      }
+      playButton.textContent = "Pause";
+      state.timer = setInterval(() => {
+        state.index = (state.index + 1) % data.snapshots.length;
+        render();
+      }, 900);
+    });
+    window.addEventListener("resize", render);
+    loadData().catch((error) => {
+      document.body.innerHTML = `<main style="padding:24px;font-family:system-ui,sans-serif">
+        <h1>Unable to load visualizer data</h1>
+        <p>${error.message}</p>
+        <p>Serve this directory with a local web server, then open the HTML through localhost.</p>
+      </main>`;
+    });
+  </script>
+</body>
+</html>
